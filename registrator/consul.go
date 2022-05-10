@@ -58,8 +58,8 @@ type consul struct {
 	consulClient *api.Client
 	// services
 	m        sync.Mutex
-	services map[string]chan struct{} // used to stop the registration
-	cfn      context.CancelFunc
+	services map[string]chan struct{}      // used to stop the registration
+	cfn      map[string]context.CancelFunc // used for canceling the watch
 	// logging
 	log logging.Logger
 }
@@ -77,6 +77,7 @@ func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ..
 			datacenter: dcName,
 		},
 		services: map[string]chan struct{}{},
+		cfn:      map[string]context.CancelFunc{},
 	}
 
 	for _, opt := range opts {
@@ -311,7 +312,11 @@ func (r *consul) Watch(ctx context.Context, serviceName string, tags []string) c
 func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
 	log := r.log.WithValues("serviceName", serviceName)
 	watchTimeout := defaultWatchTimeout
-	ctx, r.cfn = context.WithCancel(ctx)
+	cfn, ok := r.cfn[serviceName]
+	if ok {
+		cfn()
+	}
+	ctx, r.cfn[serviceName] = context.WithCancel(ctx)
 
 	var index uint64
 	qOpts := &api.QueryOptions{
@@ -396,6 +401,16 @@ func (r *consul) watch(qOpts *api.QueryOptions, serviceName string, tags []strin
 	return meta.LastIndex, nil
 }
 
-func (r *consul) StopWatch() {
-	r.cfn()
+func (r *consul) StopWatch(serviceName string) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	if serviceName == "" {
+		for _, cfn := range r.cfn {
+			cfn()
+		}
+		return
+	}
+	if cfn, ok := r.cfn[serviceName]; ok {
+		cfn()
+	}
 }

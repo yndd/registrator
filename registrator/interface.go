@@ -52,7 +52,7 @@ type Registrator interface {
 	// all services through 1 channel
 	WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse)
 	//
-	StopWatch()
+	StopWatch(serviceName string)
 }
 
 // WithLogger adds a logger to the Registrator
@@ -117,4 +117,4 @@ func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []s
 func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
 }
 
-func (r *nopRegistrator) StopWatch() {}
+func (r *nopRegistrator) StopWatch(serviceName string) {}
