@@ -64,7 +64,7 @@ type consul struct {
 	log logging.Logger
 }
 
-func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) (Registrator, error) {
+func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) Registrator {
 	// if the namespace is not provided we initialize to consul namespace
 	if namespace == "" {
 		namespace = "consul"
@@ -83,11 +83,8 @@ func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ..
 		opt(r)
 	}
 
-	if err := r.init(ctx); err != nil {
-		return nil, err
-	}
-
-	return r, nil
+	r.init(ctx)
+	return r
 }
 
 func (r *consul) WithLogger(l logging.Logger) {
@@ -98,7 +95,7 @@ func (r *consul) WithClient(rc resource.ClientApplicator) {
 	r.client = rc
 }
 
-func (r *consul) init(ctx context.Context) error {
+func (r *consul) init(ctx context.Context) {
 	log := r.log.WithValues("Consul", r.consulConfig)
 	log.Debug("consul init, trying to find daemonset...")
 
@@ -109,7 +106,8 @@ CONSULDAEMONSETPOD:
 	}
 	pods := &corev1.PodList{}
 	if err := r.client.List(ctx, pods, opts...); err != nil {
-		return err
+		log.Debug("cannot list pods on k8s api", "err", err)
+		goto CONSULDAEMONSETPOD
 	}
 
 	found := false
@@ -149,8 +147,6 @@ CONSULDAEMONSETPOD:
 		goto CONSULDAEMONSETPOD
 	}
 	log.Debug("consul daemonset found", "address", r.consulConfig.address, "datacenter", r.consulConfig.datacenter)
-
-	return nil
 }
 
 func (r *consul) Register(ctx context.Context, s *Service) {
