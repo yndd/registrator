@@ -59,6 +59,7 @@ type consul struct {
 	// services
 	m        sync.Mutex
 	services map[string]chan struct{} // used to stop the registration
+	cfn      context.CancelFunc
 	// logging
 	log logging.Logger
 }
@@ -314,6 +315,7 @@ func (r *consul) Watch(ctx context.Context, serviceName string, tags []string) c
 func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
 	log := r.log.WithValues("serviceName", serviceName)
 	watchTimeout := defaultWatchTimeout
+	ctx, r.cfn = context.WithCancel(ctx)
 
 	var index uint64
 	qOpts := &api.QueryOptions{
@@ -327,12 +329,12 @@ func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string,
 		case <-ctx.Done():
 			ch <- &ServiceResponse{
 				ServiceName: serviceName,
-				Err: ctx.Err(),
+				Err:         ctx.Err(),
 			}
 			return
 		default:
-			log.Debug("(re)starting watch", "index",  qOpts.WaitIndex)
-			
+			log.Debug("(re)starting watch", "index", qOpts.WaitIndex)
+
 			index, err = r.watch(qOpts.WithContext(ctx), serviceName, tags, ch)
 			if err != nil {
 				log.Debug("watch error", "error", err)
@@ -367,7 +369,7 @@ func (r *consul) watch(qOpts *api.QueryOptions, serviceName string, tags []strin
 		meta = new(api.QueryMeta)
 	}
 	if meta.LastIndex == qOpts.WaitIndex {
-		log.Debug("service did not change", "index", meta.LastIndex )
+		log.Debug("service did not change", "index", meta.LastIndex)
 		return meta.LastIndex, nil
 	}
 	if err != nil {
@@ -391,9 +393,13 @@ func (r *consul) watch(qOpts *api.QueryOptions, serviceName string, tags []strin
 		})
 	}
 	sChan <- &ServiceResponse{
-		ServiceName: serviceName,
+		ServiceName:      serviceName,
 		ServiceInstances: newSrvs,
-		Err: nil,
+		Err:              nil,
 	}
 	return meta.LastIndex, nil
+}
+
+func (r *consul) StopWatch() {
+	r.cfn()
 }

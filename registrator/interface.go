@@ -51,6 +51,8 @@ type Registrator interface {
 	Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse
 	// all services through 1 channel
 	WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse)
+	//
+	StopWatch()
 }
 
 // WithLogger adds a logger to the Registrator
@@ -104,8 +106,15 @@ func (r *nopRegistrator) Register(ctx context.Context, s *Service) {}
 
 func (r *nopRegistrator) DeRegister(ctx context.Context, id string) {}
 
-func (r *nopRegistrator) Query(ctx context.Context, serviceName string, tags []string) ([]*Service, error)
+func (r *nopRegistrator) Query(ctx context.Context, serviceName string, tags []string) ([]*Service, error) {
+	return nil, nil
+}
 
-func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse
+func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {
+	return nil
+}
 
-func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse)
+func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
+}
+
+func (r *nopRegistrator) StopWatch() {}
