@@ -40,6 +40,8 @@ type Registrator interface {
 	WithLogger(log logging.Logger)
 	// add a k8s client to the Registrator
 	WithClient(c resource.ClientApplicator)
+	// Init()
+	Init(ctx context.Context)
 	// Register
 	Register(ctx context.Context, s *Service)
 	// DeRegister
@@ -101,6 +103,8 @@ type nopRegistrator struct{}
 func (r *nopRegistrator) WithLogger(log logging.Logger) {}
 
 func (r *nopRegistrator) WithClient(c resource.ClientApplicator) {}
+
+func (r *nopRegistrator) Init(ctx context.Context) {}
 
 func (r *nopRegistrator) Register(ctx context.Context, s *Service) {}
 

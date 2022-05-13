@@ -64,7 +64,7 @@ type consul struct {
 	log logging.Logger
 }
 
-func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) Registrator {
+func NewConsulRegistrator(namespace, dcName string, opts ...Option) Registrator {
 	// if the namespace is not provided we initialize to consul namespace
 	if namespace == "" {
 		namespace = "consul"
@@ -84,7 +84,6 @@ func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ..
 		opt(r)
 	}
 
-	r.init(ctx)
 	return r
 }
 
@@ -96,7 +95,7 @@ func (r *consul) WithClient(rc resource.ClientApplicator) {
 	r.client = rc
 }
 
-func (r *consul) init(ctx context.Context) {
+func (r *consul) Init(ctx context.Context) {
 	log := r.log.WithValues("Consul", *r.consulConfig)
 	log.Debug("consul init, trying to find daemonset...")
 
@@ -171,7 +170,7 @@ func (r *consul) DeRegister(ctx context.Context, id string) {
 
 }
 
-func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan struct{}) error {
+func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan struct{}) {
 	log := r.log.WithValues("Consul", r.consulConfig)
 	log.Debug("Register...")
 
@@ -249,7 +248,8 @@ INITCONSUL:
 
 	if err := r.consulClient.Agent().ServiceRegister(service); err != nil {
 		log.Debug("consul register service failed", "error", err)
-		return err
+		time.Sleep(1 * time.Second)
+		goto INITCONSUL
 	}
 
 	ticker := &time.Ticker{}
@@ -275,7 +275,7 @@ INITCONSUL:
 			r.log.Debug("deregister...")
 			r.consulClient.Agent().ServiceDeregister(s.ID)
 			ticker.Stop()
-			return nil
+			return
 		}
 	}
 }
