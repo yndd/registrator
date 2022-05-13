@@ -108,6 +108,7 @@ CONSULDAEMONSETPOD:
 	pods := &corev1.PodList{}
 	if err := r.client.List(ctx, pods, opts...); err != nil {
 		log.Debug("cannot list pods on k8s api", "err", err)
+		time.Sleep(2 * time.Second)
 		goto CONSULDAEMONSETPOD
 	}
 
