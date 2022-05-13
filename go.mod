@@ -6,7 +6,7 @@ require (
 	github.com/hashicorp/consul/api v1.12.0
 	github.com/yndd/ndd-runtime v0.5.8
 	github.com/yndd/ndd-target-runtime v0.0.38
-	k8s.io/api v0.24.0
+	k8s.io/api v0.23.6
 	sigs.k8s.io/controller-runtime v0.11.2
 )
 
