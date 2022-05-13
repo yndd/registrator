@@ -40,12 +40,12 @@ const (
 )
 
 type consulConfig struct {
-	namespace  string // namespace in which consul is deployed
-	address    string // address of the consul client
-	datacenter string // default kind-dc1
-	username   string
-	password   string
-	token      string
+	Namespace  string // namespace in which consul is deployed
+	Address    string // address of the consul client
+	Datacenter string // default kind-dc1
+	Username   string
+	Password   string
+	Token      string
 }
 
 // consul implements the Registrator interface
@@ -73,8 +73,8 @@ func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ..
 	r := &consul{
 		//serviceConfig: &serviceConfig{},
 		consulConfig: &consulConfig{
-			namespace:  namespace,
-			datacenter: dcName,
+			Namespace:  namespace,
+			Datacenter: dcName,
 		},
 		services: map[string]chan struct{}{},
 		cfn:      map[string]context.CancelFunc{},
@@ -103,7 +103,7 @@ func (r *consul) init(ctx context.Context) {
 CONSULDAEMONSETPOD:
 	// get all the pods in the consul namespace
 	opts := []client.ListOption{
-		client.InNamespace(r.consulConfig.namespace),
+		client.InNamespace(r.consulConfig.Namespace),
 	}
 	pods := &corev1.PodList{}
 	if err := r.client.List(ctx, pods, opts...); err != nil {
@@ -134,8 +134,8 @@ CONSULDAEMONSETPOD:
 				pod.Spec.NodeName == os.Getenv("NODE_NAME") {
 				//pod.Status.HostIP == os.Getenv("Node_IP") {
 				found = true
-				r.consulConfig.address = strings.Join([]string{pod.Status.PodIP, defaultConsulPort}, ":") // TODO
-				r.consulConfig.datacenter = defaultDCName
+				r.consulConfig.Address = strings.Join([]string{pod.Status.PodIP, defaultConsulPort}, ":") // TODO
+				r.consulConfig.Datacenter = defaultDCName
 			}
 		default:
 			// could be ReplicaSet, StatefulSet, etc, but not releant here
@@ -148,7 +148,7 @@ CONSULDAEMONSETPOD:
 		time.Sleep(defaultTimout)
 		goto CONSULDAEMONSETPOD
 	}
-	log.Debug("consul daemonset found", "address", r.consulConfig.address, "datacenter", r.consulConfig.datacenter)
+	log.Debug("consul daemonset found", "address", r.consulConfig.Address, "datacenter", r.consulConfig.Datacenter)
 }
 
 func (r *consul) Register(ctx context.Context, s *Service) {
@@ -176,15 +176,15 @@ func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan st
 	log.Debug("Register...")
 
 	clientConfig := &api.Config{
-		Address:    r.consulConfig.address,
+		Address:    r.consulConfig.Address,
 		Scheme:     "http",
-		Datacenter: r.consulConfig.datacenter,
-		Token:      r.consulConfig.token,
+		Datacenter: r.consulConfig.Datacenter,
+		Token:      r.consulConfig.Token,
 	}
-	if r.consulConfig.username != "" && r.consulConfig.password != "" {
+	if r.consulConfig.Username != "" && r.consulConfig.Password != "" {
 		clientConfig.HttpAuth = &api.HttpBasicAuth{
-			Username: r.consulConfig.username,
-			Password: r.consulConfig.password,
+			Username: r.consulConfig.Username,
+			Password: r.consulConfig.Password,
 		}
 	}
 INITCONSUL:
