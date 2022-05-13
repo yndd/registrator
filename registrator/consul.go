@@ -97,7 +97,7 @@ func (r *consul) WithClient(rc resource.ClientApplicator) {
 }
 
 func (r *consul) init(ctx context.Context) {
-	log := r.log.WithValues("Consul", r.consulConfig)
+	log := r.log.WithValues("Consul", *r.consulConfig)
 	log.Debug("consul init, trying to find daemonset...")
 
 CONSULDAEMONSETPOD:
