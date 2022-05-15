@@ -260,7 +260,7 @@ INITCONSUL:
 			Name:    s.Name,
 			Address: s.Address,
 			Port:    s.Port,
-			//Tags:    p.Cfg.ServiceRegistration.Tags,
+			Tags:    s.Tags,
 			Checks: api.AgentServiceChecks{
 				{
 					TTL:                            defaultRegistrationCheckInterval.String(),
@@ -285,7 +285,7 @@ INITCONSUL:
 			Name:    s.Name,
 			Address: s.Address,
 			Port:    s.Port,
-			//Tags:    p.Cfg.ServiceRegistration.Tags,
+			Tags:    s.Tags,
 		}
 	}
 
@@ -386,7 +386,8 @@ func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string,
 			if err != nil {
 				log.Debug("watch error", "error", err)
 			}
-			if index == 1 {
+			if index == 0 {
+				log.Debug("index 0", "local index", qOpts.WaitIndex, "server index", index)
 				// this is considered a bug in consul
 				qOpts.WaitIndex = 1
 				time.Sleep(2 * time.Second)
@@ -394,12 +395,14 @@ func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string,
 			}
 			// expected sunce waitindex is bigger than the previous value
 			if index > qOpts.WaitIndex {
+				log.Debug("index > qOpts.WaitIndex", "local index", qOpts.WaitIndex, "server index", index)
 				qOpts.WaitIndex = index
 			}
 			// reset WaitIndex if the returned index decreases because a waitIndex should always increase
 			// https://www.consul.io/api-docs/features/blocking#implementation-details
 			if index < qOpts.WaitIndex {
 				// restart to get back in sync
+				log.Debug("index < qOpts.WaitIndex -> restart", "local index", qOpts.WaitIndex, "server index", index)
 				qOpts.WaitIndex = 0
 			}
 		}
