@@ -386,7 +386,7 @@ func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string,
 			if err != nil {
 				log.Debug("watch error", "error", err)
 			}
-			if index == 0 {
+			if index == 1 {
 				// this is considered a bug in consul
 				qOpts.WaitIndex = 1
 				time.Sleep(2 * time.Second)
