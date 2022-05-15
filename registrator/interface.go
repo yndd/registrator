@@ -41,7 +41,7 @@ type Registrator interface {
 	// add a k8s client to the Registrator
 	WithClient(c resource.ClientApplicator)
 	// Init()
-	Init(ctx context.Context)
+	//Init(ctx context.Context)
 	// Register
 	Register(ctx context.Context, s *Service)
 	// DeRegister

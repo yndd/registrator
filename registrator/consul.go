@@ -64,7 +64,7 @@ type consul struct {
 	log logging.Logger
 }
 
-func NewConsulRegistrator(namespace, dcName string, opts ...Option) Registrator {
+func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) (Registrator, error) {
 	// if the namespace is not provided we initialize to consul namespace
 	if namespace == "" {
 		namespace = "consul"
@@ -84,7 +84,49 @@ func NewConsulRegistrator(namespace, dcName string, opts ...Option) Registrator 
 		opt(r)
 	}
 
-	return r
+	r.init(ctx)
+
+
+	if err := r.createClient(); err != nil {
+		return nil, err
+	}
+	
+	return r, nil
+}
+
+func (r *consul) createClient() error {
+	log := r.log.WithValues("Consul", *r.consulConfig)
+	log.Debug("consul create client...")
+
+	clientConfig := &api.Config{
+		Address:    r.consulConfig.Address,
+		Scheme:     "http",
+		Datacenter: r.consulConfig.Datacenter,
+		Token:      r.consulConfig.Token,
+	}
+	if r.consulConfig.Username != "" && r.consulConfig.Password != "" {
+		clientConfig.HttpAuth = &api.HttpBasicAuth{
+			Username: r.consulConfig.Username,
+			Password: r.consulConfig.Password,
+		}
+	}
+
+	var err error
+	if r.consulClient, err = api.NewClient(clientConfig); err != nil {
+		log.Debug("failed to connect to consul", "error", err)
+		return err
+	}
+	self, err := r.consulClient.Agent().Self()
+	if err != nil {
+		log.Debug("failed to connect to consul", "error", err)
+		time.Sleep(1 * time.Second)
+		return err
+	}
+	if cfg, ok := self["Config"]; ok {
+		b, _ := json.Marshal(cfg)
+		log.Debug("consul agent config:", "agent config", string(b))
+	}
+	return nil
 }
 
 func (r *consul) WithLogger(l logging.Logger) {
@@ -95,7 +137,7 @@ func (r *consul) WithClient(rc resource.ClientApplicator) {
 	r.client = rc
 }
 
-func (r *consul) Init(ctx context.Context) {
+func (r *consul) init(ctx context.Context) {
 	log := r.log.WithValues("Consul", *r.consulConfig)
 	log.Debug("consul init, trying to find daemonset...")
 
@@ -174,6 +216,7 @@ func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan st
 	log := r.log.WithValues("Consul", r.consulConfig)
 	log.Debug("Register...")
 
+	/*
 	clientConfig := &api.Config{
 		Address:    r.consulConfig.Address,
 		Scheme:     "http",
@@ -186,7 +229,9 @@ func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan st
 			Password: r.consulConfig.Password,
 		}
 	}
+	*/
 INITCONSUL:
+/*
 	var err error
 	if r.consulClient, err = api.NewClient(clientConfig); err != nil {
 		log.Debug("failed to connect to consul", "error", err)
@@ -203,6 +248,7 @@ INITCONSUL:
 		b, _ := json.Marshal(cfg)
 		log.Debug("consul agent config:", "agent config", string(b))
 	}
+	*/
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -263,8 +309,7 @@ INITCONSUL:
 	for {
 		select {
 		case <-ticker.C:
-			err = r.consulClient.Agent().UpdateTTL(ttlCheckID, "", api.HealthPassing)
-			if err != nil {
+			if err := r.consulClient.Agent().UpdateTTL(ttlCheckID, "", api.HealthPassing); err != nil {
 				log.Debug("consul failed to pass TTL check", "error", err)
 			}
 		case <-ctx.Done():
