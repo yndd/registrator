@@ -22,7 +22,6 @@ import (
 
 	pkgmetav1 "github.com/yndd/ndd-core/apis/pkg/meta/v1"
 	"github.com/yndd/ndd-runtime/pkg/logging"
-	"github.com/yndd/ndd-target-runtime/pkg/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,7 +42,7 @@ type Registrator interface {
 	// add a logger to the Registrator
 	WithLogger(log logging.Logger)
 	// add a k8s client to the Registrator
-	WithClient(c resource.ClientApplicator)
+	WithClient(c client.Client)
 	// Init()
 	//Init(ctx context.Context)
 	// Register
@@ -69,7 +68,7 @@ func WithLogger(l logging.Logger) Option {
 }
 
 // WithClient adds a k8s client to the Registrator.
-func WithClient(c resource.ClientApplicator) Option {
+func WithClient(c client.Client) Option {
 	return func(o Registrator) {
 		o.WithClient(c)
 	}
@@ -106,7 +105,7 @@ type nopRegistrator struct{}
 
 func (r *nopRegistrator) WithLogger(log logging.Logger) {}
 
-func (r *nopRegistrator) WithClient(c resource.ClientApplicator) {}
+func (r *nopRegistrator) WithClient(c client.Client) {}
 
 func (r *nopRegistrator) Init(ctx context.Context) {}
 
@@ -130,7 +129,7 @@ func (r *nopRegistrator) StopWatch(serviceName string) {}
 type Options struct {
 	Logger                    logging.Logger
 	Scheme                    *runtime.Scheme
-	DcName                    string
+	ServiceDiscoveryDcName    string
 	ServiceDiscovery          pkgmetav1.ServiceDiscoveryType
 	ServiceDiscoveryNamespace string
 }
@@ -138,15 +137,12 @@ type Options struct {
 func New(ctx context.Context, config *rest.Config, o *Options) (Registrator, error) {
 	switch o.ServiceDiscovery {
 	case pkgmetav1.ServiceDiscoveryTypeConsul:
-		client, err := getClient(config, o)
+		c, err := getClient(config, o)
 		if err != nil {
 			return nil, err
 		}
-		return NewConsulRegistrator(ctx, o.ServiceDiscoveryNamespace, o.DcName,
-			WithClient(resource.ClientApplicator{
-				Client:     client,
-				Applicator: resource.NewAPIPatchingApplicator(client),
-			}),
+		return NewConsulRegistrator(ctx, o.ServiceDiscoveryNamespace, o.ServiceDiscoveryDcName,
+			WithClient(c),
 			WithLogger(o.Logger))
 	// TODO add k8s
 	//case pkgmetav1.ServiceDiscoveryTypeK8s:

@@ -28,13 +28,11 @@ import (
 	"github.com/hashicorp/consul/api"
 
 	"github.com/yndd/ndd-runtime/pkg/logging"
-	"github.com/yndd/ndd-target-runtime/pkg/resource"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	defaultDCName       = "kind-dc1"
 	defaultConsulPort   = "8500"
 	defaultWatchTimeout = 1 * time.Minute
 )
@@ -53,7 +51,7 @@ type consul struct {
 	//serviceConfig *serviceConfig
 	consulConfig *consulConfig
 	// kubernetes
-	client resource.ClientApplicator
+	client client.Client
 	// consul
 	consulClient *api.Client
 	// services
@@ -86,11 +84,10 @@ func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ..
 
 	r.init(ctx)
 
-
 	if err := r.createClient(); err != nil {
 		return nil, err
 	}
-	
+
 	return r, nil
 }
 
@@ -133,8 +130,8 @@ func (r *consul) WithLogger(l logging.Logger) {
 	r.log = l
 }
 
-func (r *consul) WithClient(rc resource.ClientApplicator) {
-	r.client = rc
+func (r *consul) WithClient(c client.Client) {
+	r.client = c
 }
 
 func (r *consul) init(ctx context.Context) {
@@ -176,7 +173,7 @@ CONSULDAEMONSETPOD:
 				//pod.Status.HostIP == os.Getenv("Node_IP") {
 				found = true
 				r.consulConfig.Address = strings.Join([]string{pod.Status.PodIP, defaultConsulPort}, ":") // TODO
-				r.consulConfig.Datacenter = defaultDCName
+				//r.consulConfig.Datacenter = defaultDCName
 			}
 		default:
 			// could be ReplicaSet, StatefulSet, etc, but not releant here
@@ -217,37 +214,37 @@ func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan st
 	log.Debug("Register...")
 
 	/*
-	clientConfig := &api.Config{
-		Address:    r.consulConfig.Address,
-		Scheme:     "http",
-		Datacenter: r.consulConfig.Datacenter,
-		Token:      r.consulConfig.Token,
-	}
-	if r.consulConfig.Username != "" && r.consulConfig.Password != "" {
-		clientConfig.HttpAuth = &api.HttpBasicAuth{
-			Username: r.consulConfig.Username,
-			Password: r.consulConfig.Password,
+		clientConfig := &api.Config{
+			Address:    r.consulConfig.Address,
+			Scheme:     "http",
+			Datacenter: r.consulConfig.Datacenter,
+			Token:      r.consulConfig.Token,
 		}
-	}
+		if r.consulConfig.Username != "" && r.consulConfig.Password != "" {
+			clientConfig.HttpAuth = &api.HttpBasicAuth{
+				Username: r.consulConfig.Username,
+				Password: r.consulConfig.Password,
+			}
+		}
 	*/
 INITCONSUL:
-/*
-	var err error
-	if r.consulClient, err = api.NewClient(clientConfig); err != nil {
-		log.Debug("failed to connect to consul", "error", err)
-		time.Sleep(1 * time.Second)
-		goto INITCONSUL
-	}
-	self, err := r.consulClient.Agent().Self()
-	if err != nil {
-		log.Debug("failed to connect to consul", "error", err)
-		time.Sleep(1 * time.Second)
-		goto INITCONSUL
-	}
-	if cfg, ok := self["Config"]; ok {
-		b, _ := json.Marshal(cfg)
-		log.Debug("consul agent config:", "agent config", string(b))
-	}
+	/*
+		var err error
+		if r.consulClient, err = api.NewClient(clientConfig); err != nil {
+			log.Debug("failed to connect to consul", "error", err)
+			time.Sleep(1 * time.Second)
+			goto INITCONSUL
+		}
+		self, err := r.consulClient.Agent().Self()
+		if err != nil {
+			log.Debug("failed to connect to consul", "error", err)
+			time.Sleep(1 * time.Second)
+			goto INITCONSUL
+		}
+		if cfg, ok := self["Config"]; ok {
+			b, _ := json.Marshal(cfg)
+			log.Debug("consul agent config:", "agent config", string(b))
+		}
 	*/
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
