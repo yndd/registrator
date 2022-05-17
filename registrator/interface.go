@@ -20,8 +20,12 @@ import (
 	"context"
 	"time"
 
+	pkgmetav1 "github.com/yndd/ndd-core/apis/pkg/meta/v1"
 	"github.com/yndd/ndd-runtime/pkg/logging"
 	"github.com/yndd/ndd-target-runtime/pkg/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -122,3 +126,38 @@ func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags [
 }
 
 func (r *nopRegistrator) StopWatch(serviceName string) {}
+
+type Options struct {
+	Logger                    logging.Logger
+	Scheme                    *runtime.Scheme
+	DcName                    string
+	ServiceDiscovery          pkgmetav1.ServiceDiscoveryType
+	ServiceDiscoveryNamespace string
+}
+
+func New(ctx context.Context, config *rest.Config, o *Options) (Registrator, error) {
+	switch o.ServiceDiscovery {
+	case pkgmetav1.ServiceDiscoveryTypeConsul:
+		client, err := getClient(config, o)
+		if err != nil {
+			return nil, err
+		}
+		return NewConsulRegistrator(ctx, o.ServiceDiscoveryNamespace, o.DcName,
+			WithClient(resource.ClientApplicator{
+				Client:     client,
+				Applicator: resource.NewAPIPatchingApplicator(client),
+			}),
+			WithLogger(o.Logger))
+	// TODO add k8s
+	//case pkgmetav1.ServiceDiscoveryTypeK8s:
+	default:
+		return NewNopRegistrator(), nil
+	}
+}
+
+func getClient(config *rest.Config, o *Options) (client.Client, error) {
+	// get client
+	return client.New(config, client.Options{
+		Scheme: o.Scheme,
+	})
+}
