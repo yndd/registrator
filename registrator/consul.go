@@ -19,6 +19,7 @@ package registrator
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/pkg/errors"
 
 	"github.com/yndd/ndd-runtime/pkg/logging"
 	corev1 "k8s.io/api/core/v1"
@@ -344,6 +346,17 @@ func (r *consul) Query(ctx context.Context, serviceName string, tags []string) (
 		})
 	}
 	return servcies, nil
+}
+
+func (r *consul) GetEndpointAddress(ctx context.Context, serviceName string, tags []string) (string, error) {
+	svcs, err := r.Query(ctx, serviceName, tags)
+	if err != nil {
+		return "", errors.Wrap(err, "cannot get query from registrator")
+	}
+	if len(svcs) == 0 {
+		return "", errors.New("target not available")
+	}
+	return fmt.Sprintf("%s:%s", svcs[0].Address, strconv.Itoa(svcs[0].Port)), nil
 }
 
 func (r *consul) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {

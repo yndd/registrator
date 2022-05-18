@@ -51,6 +51,8 @@ type Registrator interface {
 	DeRegister(ctx context.Context, id string)
 	// Query
 	Query(ctx context.Context, serviceName string, tags []string) ([]*Service, error)
+	// GetEndpointAddress returns the address/port of the serviceEndpoint
+	GetEndpointAddress(ctx context.Context, serviceName string, tags []string) (string, error)
 	// Watch
 	// 1 channel per service to watch
 	Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse
@@ -96,12 +98,16 @@ const (
 	HealthKindGRPC HealthKind = "grpc"
 )
 
-func NewNopRegistrator(opts ...Option) Registrator {
-	return &nopRegistrator{}
+func NewNopRegistrator(o *Options, opts ...Option) Registrator {
+	return &nopRegistrator{
+		address: o.Address,
+	}
 }
 
 // consul implements the Registrator interface
-type nopRegistrator struct{}
+type nopRegistrator struct {
+	address string
+}
 
 func (r *nopRegistrator) WithLogger(log logging.Logger) {}
 
@@ -115,6 +121,10 @@ func (r *nopRegistrator) DeRegister(ctx context.Context, id string) {}
 
 func (r *nopRegistrator) Query(ctx context.Context, serviceName string, tags []string) ([]*Service, error) {
 	return nil, nil
+}
+
+func (r *nopRegistrator) GetEndpointAddress(ctx context.Context, serviceName string, tags []string) (string, error) {
+	return r.address, nil
 }
 
 func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {
@@ -132,6 +142,7 @@ type Options struct {
 	ServiceDiscoveryDcName    string
 	ServiceDiscovery          pkgmetav1.ServiceDiscoveryType
 	ServiceDiscoveryNamespace string
+	Address                   string
 }
 
 func New(ctx context.Context, config *rest.Config, o *Options) (Registrator, error) {
@@ -147,7 +158,7 @@ func New(ctx context.Context, config *rest.Config, o *Options) (Registrator, err
 	// TODO add k8s
 	//case pkgmetav1.ServiceDiscoveryTypeK8s:
 	default:
-		return NewNopRegistrator(), nil
+		return NewNopRegistrator(o), nil
 	}
 }
 
