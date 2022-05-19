@@ -64,7 +64,7 @@ type consul struct {
 	log logging.Logger
 }
 
-func newConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) (Registrator, error) {
+func newConsulRegistrator(ctx context.Context, c client.Client, namespace, dcName string, opts ...Option) (Registrator, error) {
 	// if the namespace is not provided we initialize to consul namespace
 	if namespace == "" {
 		namespace = "consul"
@@ -75,6 +75,7 @@ func newConsulRegistrator(ctx context.Context, namespace, dcName string, opts ..
 			Namespace:  namespace,
 			Datacenter: dcName,
 		},
+		client:   c,
 		services: map[string]chan struct{}{},
 		cfn:      map[string]context.CancelFunc{},
 	}

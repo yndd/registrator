@@ -23,6 +23,7 @@ import (
 	pkgmetav1 "github.com/yndd/ndd-core/apis/pkg/meta/v1"
 	"github.com/yndd/ndd-runtime/pkg/logging"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -42,7 +43,7 @@ type Registrator interface {
 	// add a logger to the Registrator
 	WithLogger(log logging.Logger)
 	// add a k8s client to the Registrator
-	WithClient(c client.Client)
+	// WithClient(c client.Client)
 	// Init()
 	//Init(ctx context.Context)
 	// Register
@@ -66,13 +67,6 @@ type Registrator interface {
 func WithLogger(l logging.Logger) Option {
 	return func(o Registrator) {
 		o.WithLogger(l)
-	}
-}
-
-// WithClient adds a k8s client to the Registrator.
-func WithClient(c client.Client) Option {
-	return func(o Registrator) {
-		o.WithClient(c)
 	}
 }
 
@@ -114,17 +108,14 @@ func New(ctx context.Context, config *rest.Config, o *Options) (Registrator, err
 		if err != nil {
 			return nil, err
 		}
-		return newConsulRegistrator(ctx, o.ServiceDiscoveryNamespace, o.ServiceDiscoveryDcName,
-			WithClient(c),
+		return newConsulRegistrator(ctx, c, o.ServiceDiscoveryNamespace, o.ServiceDiscoveryDcName,
 			WithLogger(o.Logger))
 	case pkgmetav1.ServiceDiscoveryTypeK8s:
-		c, err := getClient(config, o)
+		c, err := kubernetes.NewForConfig(config)
 		if err != nil {
 			return nil, err
 		}
-		return newk8sRegistrator(ctx, o.ServiceDiscoveryNamespace,
-			WithClient(c),
-			WithLogger(o.Logger))
+		return newK8sRegistrator(ctx, c, o.ServiceDiscoveryNamespace, WithLogger(o.Logger))
 	default:
 		return newNopRegistrator(o), nil
 	}
