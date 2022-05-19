@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	defaultTimout                    = 1 * time.Second
-	defaultRegistrationCheckInterval = 5 * time.Second
+	defaultWaitTime                  = 1 * time.Second
+	defaultRegistrationCheckInterval = 10 * time.Second
 	defaultMaxServiceFail            = 3
 )
 
@@ -77,12 +77,12 @@ func WithClient(c client.Client) Option {
 }
 
 type Service struct {
-	Name       string     // service name e.g. provider or worker
-	ID         string     // service instance
-	Port       int        // service port
-	Address    string     // service address
-	Tags       []string   // service tags
-	HealthKind HealthKind // what type of healthkind is needed to test the service
+	Name         string       // service name e.g. provider or worker
+	ID           string       // service instance
+	Port         int          // service port
+	Address      string       // service address
+	Tags         []string     // service tags
+	HealthChecks []HealthKind // what type of health check kinds are needed to test the service
 }
 
 type ServiceResponse struct {
@@ -94,47 +94,9 @@ type ServiceResponse struct {
 type HealthKind string
 
 const (
-	HealthKindNone HealthKind = ""
+	HealthKindTTL  HealthKind = "ttl"
 	HealthKindGRPC HealthKind = "grpc"
 )
-
-func NewNopRegistrator(o *Options, opts ...Option) Registrator {
-	return &nopRegistrator{
-		address: o.Address,
-	}
-}
-
-// consul implements the Registrator interface
-type nopRegistrator struct {
-	address string
-}
-
-func (r *nopRegistrator) WithLogger(log logging.Logger) {}
-
-func (r *nopRegistrator) WithClient(c client.Client) {}
-
-func (r *nopRegistrator) Init(ctx context.Context) {}
-
-func (r *nopRegistrator) Register(ctx context.Context, s *Service) {}
-
-func (r *nopRegistrator) DeRegister(ctx context.Context, id string) {}
-
-func (r *nopRegistrator) Query(ctx context.Context, serviceName string, tags []string) ([]*Service, error) {
-	return nil, nil
-}
-
-func (r *nopRegistrator) GetEndpointAddress(ctx context.Context, serviceName string, tags []string) (string, error) {
-	return r.address, nil
-}
-
-func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {
-	return nil
-}
-
-func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
-}
-
-func (r *nopRegistrator) StopWatch(serviceName string) {}
 
 type Options struct {
 	Logger                    logging.Logger
@@ -152,13 +114,19 @@ func New(ctx context.Context, config *rest.Config, o *Options) (Registrator, err
 		if err != nil {
 			return nil, err
 		}
-		return NewConsulRegistrator(ctx, o.ServiceDiscoveryNamespace, o.ServiceDiscoveryDcName,
+		return newConsulRegistrator(ctx, o.ServiceDiscoveryNamespace, o.ServiceDiscoveryDcName,
 			WithClient(c),
 			WithLogger(o.Logger))
-	// TODO add k8s
-	//case pkgmetav1.ServiceDiscoveryTypeK8s:
+	case pkgmetav1.ServiceDiscoveryTypeK8s:
+		c, err := getClient(config, o)
+		if err != nil {
+			return nil, err
+		}
+		return newk8sRegistrator(ctx, o.ServiceDiscoveryNamespace,
+			WithClient(c),
+			WithLogger(o.Logger))
 	default:
-		return NewNopRegistrator(o), nil
+		return newNopRegistrator(o), nil
 	}
 }
 

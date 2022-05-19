@@ -7,11 +7,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func Newk8sRegistrator(opts ...Option) (Registrator, error) {
-	return &k8sRegistrator{}, nil
+func newk8sRegistrator(ctx context.Context, namespace string, opts ...Option) (Registrator, error) {
+	if namespace == "" {
+		namespace = "ndd-system"
+	}
+	r := new(k8sRegistrator)
+	for _, opt := range opts {
+		opt(r)
+	}
+
+	return r, nil
 }
 
-// consul implements the Registrator interface
+// k8sRegistrator implements the Registrator interface
 type k8sRegistrator struct {
 	client client.Client
 	log    logging.Logger
@@ -25,11 +33,7 @@ func (r *k8sRegistrator) WithClient(c client.Client) {
 	r.client = c
 }
 
-func (r *k8sRegistrator) Init(ctx context.Context) {}
-
-func (r *k8sRegistrator) Register(ctx context.Context, s *Service) {
-
-}
+func (r *k8sRegistrator) Register(ctx context.Context, s *Service) {}
 
 func (r *k8sRegistrator) DeRegister(ctx context.Context, id string) {}
 

@@ -64,14 +64,13 @@ type consul struct {
 	log logging.Logger
 }
 
-func NewConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) (Registrator, error) {
+func newConsulRegistrator(ctx context.Context, namespace, dcName string, opts ...Option) (Registrator, error) {
 	// if the namespace is not provided we initialize to consul namespace
 	if namespace == "" {
 		namespace = "consul"
 	}
 
 	r := &consul{
-		//serviceConfig: &serviceConfig{},
 		consulConfig: &consulConfig{
 			Namespace:  namespace,
 			Datacenter: dcName,
@@ -185,7 +184,7 @@ CONSULDAEMONSETPOD:
 	if !found {
 		// daemonset not found
 		log.Debug("consul daemonset not found")
-		time.Sleep(defaultTimout)
+		time.Sleep(defaultWaitTime)
 		goto CONSULDAEMONSETPOD
 	}
 	log.Debug("consul daemonset found", "address", r.consulConfig.Address, "datacenter", r.consulConfig.Datacenter)
@@ -208,83 +207,40 @@ func (r *consul) DeRegister(ctx context.Context, id string) {
 		close(stopCh)
 		delete(r.services, id)
 	}
-
 }
 
 func (r *consul) registerService(ctx context.Context, s *Service, stopCh chan struct{}) {
 	log := r.log.WithValues("Consul", r.consulConfig)
 	log.Debug("Register...")
-
-	/*
-		clientConfig := &api.Config{
-			Address:    r.consulConfig.Address,
-			Scheme:     "http",
-			Datacenter: r.consulConfig.Datacenter,
-			Token:      r.consulConfig.Token,
-		}
-		if r.consulConfig.Username != "" && r.consulConfig.Password != "" {
-			clientConfig.HttpAuth = &api.HttpBasicAuth{
-				Username: r.consulConfig.Username,
-				Password: r.consulConfig.Password,
-			}
-		}
-	*/
 INITCONSUL:
-	/*
-		var err error
-		if r.consulClient, err = api.NewClient(clientConfig); err != nil {
-			log.Debug("failed to connect to consul", "error", err)
-			time.Sleep(1 * time.Second)
-			goto INITCONSUL
-		}
-		self, err := r.consulClient.Agent().Self()
-		if err != nil {
-			log.Debug("failed to connect to consul", "error", err)
-			time.Sleep(1 * time.Second)
-			goto INITCONSUL
-		}
-		if cfg, ok := self["Config"]; ok {
-			b, _ := json.Marshal(cfg)
-			log.Debug("consul agent config:", "agent config", string(b))
-		}
-	*/
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var service *api.AgentServiceRegistration
+	service := &api.AgentServiceRegistration{
+		ID:      s.ID,
+		Name:    s.Name,
+		Address: s.Address,
+		Port:    s.Port,
+		Tags:    s.Tags,
+	}
 	ttlCheckID := ""
-	if s.HealthKind != HealthKindNone {
-		service = &api.AgentServiceRegistration{
-			ID:      s.ID,
-			Name:    s.Name,
-			Address: s.Address,
-			Port:    s.Port,
-			Tags:    s.Tags,
-			Checks: api.AgentServiceChecks{
-				{
+	for idx, hc := range s.HealthChecks {
+		switch hc {
+		case HealthKindTTL:
+			service.Checks = append(service.Checks,
+				&api.AgentServiceCheck{
 					TTL:                            defaultRegistrationCheckInterval.String(),
 					DeregisterCriticalServiceAfter: (defaultMaxServiceFail * defaultRegistrationCheckInterval).String(),
-				},
-			},
-		}
-
-		ttlCheckID = strings.Join([]string{"service", s.ID, "1"}, ":")
-
-		service.Checks = append(service.Checks, &api.AgentServiceCheck{
-			GRPC:                           s.Address + ":" + strconv.Itoa(s.Port),
-			GRPCUseTLS:                     true,
-			Interval:                       defaultRegistrationCheckInterval.String(),
-			TLSSkipVerify:                  true,
-			DeregisterCriticalServiceAfter: (defaultMaxServiceFail * defaultRegistrationCheckInterval).String(),
-		})
-		//ttlCheckID = ttlCheckID + ":1"
-	} else {
-		service = &api.AgentServiceRegistration{
-			ID:      s.ID,
-			Name:    s.Name,
-			Address: s.Address,
-			Port:    s.Port,
-			Tags:    s.Tags,
+				})
+			ttlCheckID = fmt.Sprintf("service:%s:%d", s.ID, idx)
+		case HealthKindGRPC:
+			service.Checks = append(service.Checks, &api.AgentServiceCheck{
+				GRPC:                           s.Address + ":" + strconv.Itoa(s.Port),
+				GRPCUseTLS:                     true,
+				Interval:                       defaultRegistrationCheckInterval.String(),
+				TLSSkipVerify:                  true,
+				DeregisterCriticalServiceAfter: (defaultMaxServiceFail * defaultRegistrationCheckInterval).String(),
+			})
 		}
 	}
 
@@ -293,18 +249,18 @@ INITCONSUL:
 
 	if err := r.consulClient.Agent().ServiceRegister(service); err != nil {
 		log.Debug("consul register service failed", "error", err)
-		time.Sleep(1 * time.Second)
+		time.Sleep(defaultWaitTime)
 		goto INITCONSUL
 	}
-
-	ticker := &time.Ticker{}
-	if s.HealthKind != HealthKindNone {
-		if err := r.consulClient.Agent().UpdateTTL(ttlCheckID, "", api.HealthPassing); err != nil {
-			log.Debug("consul failed to pass TTL check", "error", err)
-		}
-		ticker = time.NewTicker(defaultRegistrationCheckInterval / 2)
+	if ttlCheckID == "" {
+		return
 	}
 
+	ticker := time.NewTicker(defaultRegistrationCheckInterval / 2)
+	defer ticker.Stop()
+	if err := r.consulClient.Agent().UpdateTTL(ttlCheckID, "", api.HealthPassing); err != nil {
+		log.Debug("consul failed to pass TTL check", "error", err)
+	}
 	for {
 		select {
 		case <-ticker.C:
@@ -313,12 +269,10 @@ INITCONSUL:
 			}
 		case <-ctx.Done():
 			r.consulClient.Agent().UpdateTTL(ttlCheckID, ctx.Err().Error(), api.HealthCritical)
-			ticker.Stop()
 			goto INITCONSUL
 		case <-stopCh:
-			r.log.Debug("deregister...")
+			r.log.Debug("deregistering", "service", s.Name, "instance", s.ID)
 			r.consulClient.Agent().ServiceDeregister(s.ID)
-			ticker.Stop()
 			return
 		}
 	}
