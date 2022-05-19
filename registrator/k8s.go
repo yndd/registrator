@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 )
@@ -30,23 +31,25 @@ func newK8sRegistrator(ctx context.Context, clientSet *kubernetes.Clientset, nam
 	}
 	r := &k8sRegistrator{
 		namespace: namespace,
-		client:    clientSet,
+		clientset: clientSet,
+		watches:   make(map[string]watch.Interface),
 	}
 	for _, opt := range opts {
 		opt(r)
 	}
-
 	return r, nil
 }
 
 // k8sRegistrator implements the Registrator interface
 type k8sRegistrator struct {
-	client    *kubernetes.Clientset
+	clientset *kubernetes.Clientset
 	log       logging.Logger
 	namespace string
 	//
 	m              *sync.RWMutex
-	acquiredleases map[string]*acquiredLease
+	acquiredLeases map[string]*acquiredLease
+	// k8s watch interface
+	watches map[string]watch.Interface
 }
 
 type acquiredLease struct {
@@ -75,7 +78,7 @@ func (r *k8sRegistrator) Register(ctx context.Context, s *Service) {
 			now := metav1.NowMicro()
 			var ol *coordinationv1.Lease
 			// get or create
-			ol, err = r.client.CoordinationV1().Leases(r.namespace).Get(ctx, l.Name, metav1.GetOptions{})
+			ol, err = r.clientset.CoordinationV1().Leases(r.namespace).Get(ctx, l.Name, metav1.GetOptions{})
 			if err != nil {
 				if !errors.IsNotFound(err) {
 					r.log.Info("failed to get Leases", "error", err)
@@ -86,14 +89,14 @@ func (r *k8sRegistrator) Register(ctx context.Context, s *Service) {
 				r.log.Info("lease not found, creating it", "lease", l.Name)
 				l.Spec.AcquireTime = &now
 				l.Spec.RenewTime = &now
-				ol, err = r.client.CoordinationV1().Leases(r.namespace).Create(ctx, l, metav1.CreateOptions{})
+				ol, err = r.clientset.CoordinationV1().Leases(r.namespace).Create(ctx, l, metav1.CreateOptions{})
 				if err != nil {
 					r.log.Info("failed to create Lease", "error", err)
 					time.Sleep(defaultWaitTime)
 					continue
 				}
 				r.m.Lock()
-				r.acquiredleases[l.Name] = &acquiredLease{
+				r.acquiredLeases[l.Name] = &acquiredLease{
 					lease:    ol,
 					doneChan: doneChan,
 				}
@@ -125,17 +128,17 @@ func (r *k8sRegistrator) Register(ctx context.Context, s *Service) {
 			// set resource version to the latest value known
 			l.SetResourceVersion(ol.GetResourceVersion())
 			r.log.Info("%q updating with %+v", l.Name, l)
-			ol, err = r.client.CoordinationV1().Leases(r.namespace).Update(ctx, l, metav1.UpdateOptions{})
+			ol, err = r.clientset.CoordinationV1().Leases(r.namespace).Update(ctx, l, metav1.UpdateOptions{})
 			if err != nil {
 				r.log.Info("failed to update Lease", "error", err)
 				time.Sleep(defaultWaitTime)
 				continue
 			}
 			r.m.Lock()
-			if lc, ok := r.acquiredleases[l.Name]; ok {
+			if lc, ok := r.acquiredLeases[l.Name]; ok {
 				lc.lease = ol
 			} else {
-				r.acquiredleases[l.Name] = &acquiredLease{lease: ol, doneChan: doneChan}
+				r.acquiredLeases[l.Name] = &acquiredLease{lease: ol, doneChan: doneChan}
 			}
 			r.m.Unlock()
 			time.Sleep(defaultRegistrationCheckInterval / 2)
@@ -147,10 +150,10 @@ func (r *k8sRegistrator) Register(ctx context.Context, s *Service) {
 func (r *k8sRegistrator) DeRegister(ctx context.Context, id string) {
 	r.m.Lock()
 	defer r.m.Unlock()
-	if l, ok := r.acquiredleases[id]; ok {
+	if l, ok := r.acquiredLeases[id]; ok {
 		close(l.doneChan)
-		delete(r.acquiredleases, id)
-		err := r.client.CoordinationV1().Leases(r.namespace).Delete(ctx, l.lease.Name, metav1.DeleteOptions{})
+		delete(r.acquiredLeases, id)
+		err := r.clientset.CoordinationV1().Leases(r.namespace).Delete(ctx, l.lease.Name, metav1.DeleteOptions{})
 		if err != nil {
 			r.log.Info("failed to delete lease", "lease", id, "error", err)
 		}
@@ -163,7 +166,7 @@ func (r *k8sRegistrator) Query(ctx context.Context, serviceName string, tags []s
 		return nil, err
 	}
 	// TODO: use limit/continue
-	leaseList, err := r.client.CoordinationV1().Leases(r.namespace).List(ctx, metav1.ListOptions{
+	leaseList, err := r.clientset.CoordinationV1().Leases(r.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: validSelector,
 	})
 	if err != nil {
@@ -187,15 +190,55 @@ func (r *k8sRegistrator) GetEndpointAddress(ctx context.Context, serviceName str
 	return fmt.Sprintf("%s:%d", ss[0].Address, ss[0].Port), nil
 }
 
-func (r *k8sRegistrator) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {
-	// wi, err := r.client.CoordinationV1().Leases(r.namespace).Watch(ctx, metav1.ListOptions{})
-	return nil
+func (r *k8sRegistrator) Watch(ctx context.Context, serviceName string, tags []string, opts WatchOptions) chan *ServiceResponse {
+	ch := make(chan *ServiceResponse)
+	go r.WatchCh(ctx, serviceName, tags, opts, ch)
+	return ch
 }
 
-func (r *k8sRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
+func (r *k8sRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, opts WatchOptions, ch chan *ServiceResponse) {
+	log := r.log.WithValues("serviceName", serviceName)
+	wi, ok := r.watches[serviceName]
+	if ok && wi != nil {
+		wi.Stop()
+	}
+	validSelector, _ := buildSelector(serviceName, tags)
+WATCH:
+	wi, err := r.clientset.CoordinationV1().Leases(r.namespace).Watch(ctx, metav1.ListOptions{
+		LabelSelector: validSelector,
+		Watch:         true,
+	})
+	if err != nil {
+		log.Info("failed to create watch", "error", err)
+		time.Sleep(defaultWaitTime)
+		goto WATCH
+	}
+	for {
+		select {
+		case _, ok := <-wi.ResultChan():
+			if !ok {
+				return
+			}
+			sr := &ServiceResponse{
+				ServiceName: serviceName,
+			}
+			if opts.RetriveServices {
+				sr.ServiceInstances, sr.Err = r.Query(ctx, serviceName, tags)
+			}
+			ch <- sr
+		}
+	}
 }
 
-func (r *k8sRegistrator) StopWatch(serviceName string) {}
+func (r *k8sRegistrator) StopWatch(serviceName string) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	wi, ok := r.watches[serviceName]
+	if ok && wi != nil {
+		wi.Stop()
+	}
+	delete(r.watches, serviceName)
+}
 
 //
 func tagsToMap(tags []string) map[string]string {
@@ -226,6 +269,7 @@ func (r *k8sRegistrator) serviceToLease(s *Service) *coordinationv1.Lease {
 		labels[k] = v
 	}
 	leaseName := fmt.Sprintf("%s-%s", s.Name, s.ID)
+	leaseName = strings.ReplaceAll(leaseName, "/", "-")
 	return &coordinationv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      leaseName,

@@ -314,13 +314,13 @@ func (r *consul) GetEndpointAddress(ctx context.Context, serviceName string, tag
 	return fmt.Sprintf("%s:%s", svcs[0].Address, strconv.Itoa(svcs[0].Port)), nil
 }
 
-func (r *consul) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {
+func (r *consul) Watch(ctx context.Context, serviceName string, tags []string, opts WatchOptions) chan *ServiceResponse {
 	ch := make(chan *ServiceResponse)
-	go r.WatchCh(ctx, serviceName, tags, ch)
+	go r.WatchCh(ctx, serviceName, tags, opts, ch)
 	return ch
 }
 
-func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
+func (r *consul) WatchCh(ctx context.Context, serviceName string, tags []string, opts WatchOptions, ch chan *ServiceResponse) {
 	log := r.log.WithValues("serviceName", serviceName)
 	watchTimeout := defaultWatchTimeout
 	cfn, ok := r.cfn[serviceName]

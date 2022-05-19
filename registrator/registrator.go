@@ -37,15 +37,17 @@ const (
 // Option can be used to manipulate Register config.
 type Option func(Registrator)
 
+type WatchOptions struct {
+	// RetriveServices defines if service details are required
+	// as part of ServiceResponse(s)
+	RetriveServices bool
+}
+
 // TargetController defines the interfaces for the target controller
 type Registrator interface {
 	//options
 	// add a logger to the Registrator
 	WithLogger(log logging.Logger)
-	// add a k8s client to the Registrator
-	// WithClient(c client.Client)
-	// Init()
-	//Init(ctx context.Context)
 	// Register
 	Register(ctx context.Context, s *Service)
 	// DeRegister
@@ -56,9 +58,9 @@ type Registrator interface {
 	GetEndpointAddress(ctx context.Context, serviceName string, tags []string) (string, error)
 	// Watch
 	// 1 channel per service to watch
-	Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse
+	Watch(ctx context.Context, serviceName string, tags []string, opts WatchOptions) chan *ServiceResponse
 	// all services through 1 channel
-	WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse)
+	WatchCh(ctx context.Context, serviceName string, tags []string, opts WatchOptions, ch chan *ServiceResponse)
 	//
 	StopWatch(serviceName string)
 }

@@ -36,11 +36,11 @@ func (r *nopRegistrator) GetEndpointAddress(ctx context.Context, serviceName str
 	return r.address, nil
 }
 
-func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []string) chan *ServiceResponse {
+func (r *nopRegistrator) Watch(ctx context.Context, serviceName string, tags []string, opts WatchOptions) chan *ServiceResponse {
 	return nil
 }
 
-func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, ch chan *ServiceResponse) {
+func (r *nopRegistrator) WatchCh(ctx context.Context, serviceName string, tags []string, opts WatchOptions, ch chan *ServiceResponse) {
 }
 
 func (r *nopRegistrator) StopWatch(serviceName string) {}
