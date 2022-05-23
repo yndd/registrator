@@ -225,7 +225,7 @@ INITCONSUL:
 		Tags:    s.Tags,
 	}
 	ttlCheckID := ""
-	for idx, hc := range s.HealthChecks {
+	for _, hc := range s.HealthChecks {
 		switch hc {
 		case HealthKindTTL:
 			service.Checks = append(service.Checks,
@@ -233,7 +233,8 @@ INITCONSUL:
 					TTL:                            defaultRegistrationCheckInterval.String(),
 					DeregisterCriticalServiceAfter: (defaultMaxServiceFail * defaultRegistrationCheckInterval).String(),
 				})
-			ttlCheckID = fmt.Sprintf("service:%s:%d", s.ID, idx)
+
+			ttlCheckID = fmt.Sprintf("service:%s:%d", s.ID, 1)
 		case HealthKindGRPC:
 			service.Checks = append(service.Checks, &api.AgentServiceCheck{
 				GRPC:                           s.Address + ":" + strconv.Itoa(s.Port),
