@@ -236,7 +236,7 @@ INITCONSUL:
 
 			ttlCheckID = fmt.Sprintf("service:%s", s.ID)
 			if len(s.HealthChecks) > 1 {
-				ttlCheckID += fmt.Sprintf(":%d", i)
+				ttlCheckID += fmt.Sprintf(":%d", i+1)
 			}
 		case HealthKindGRPC:
 			service.Checks = append(service.Checks, &api.AgentServiceCheck{
